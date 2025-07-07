@@ -566,17 +566,29 @@ module csr_regfile import ariane_pkg::*; #(
                 riscv::CSR_ML1_DCACHE_MISS,
                 riscv::CSR_L1_DCACHE_MISS,
                 riscv::CSR_MITLB_MISS,
+                riscv::CSR_ITLB_MISS,
                 riscv::CSR_MDTLB_MISS,
+                riscv::CSR_DTLB_MISS,
                 riscv::CSR_MLOAD,
+                riscv::CSR_LOAD,
                 riscv::CSR_MSTORE,
+                riscv::CSR_STORE,
                 riscv::CSR_MEXCEPTION,
+                riscv::CSR_EXCEPTION,
                 riscv::CSR_MEXCEPTION_RET,
+                riscv::CSR_EXCEPTION_RET,
                 riscv::CSR_MBRANCH_JUMP,
+                riscv::CSR_BRANCH_JUMP,
                 riscv::CSR_MCALL,
+                riscv::CSR_CALL,
                 riscv::CSR_MRET,
+                riscv::CSR_RET,
                 riscv::CSR_MMIS_PREDICT,
+                riscv::CSR_MIS_PREDICT,
                 riscv::CSR_MSB_FULL,
+                riscv::CSR_SB_FULL,
                 riscv::CSR_MIF_EMPTY,
+                riscv::CSR_IF_EMPTY,
                 riscv::CSR_MHPM_COUNTER_17,
                 riscv::CSR_MHPM_COUNTER_18,
                 riscv::CSR_MHPM_COUNTER_19,
@@ -1886,15 +1898,15 @@ module csr_regfile import ariane_pkg::*; #(
                     unique case (curr_priv)
                         riscv::PRIV_LVL_M: privilege_violation = 1'b0;
                         riscv::PRIV_LVL_S: begin
-                            virtual_privilege_violation = v_q & mcounteren_q[csr_addr_i[4:0]] & ~hcounteren_q[csr_addr_i[4:0]];
-                            privilege_violation = ~mcounteren_q[csr_addr_i[4:0]];
+                            virtual_privilege_violation = 1'b0;
+                            privilege_violation = 1'b0;
                         end
                         riscv::PRIV_LVL_U: begin
-                            virtual_privilege_violation = v_q & mcounteren_q[csr_addr_i[4:0]] & ~hcounteren_q[csr_addr_i[4:0]];
+                            virtual_privilege_violation = 1'b0;
                             if(v_q) begin
-                                privilege_violation = ~mcounteren_q[csr_addr_i[4:0]] & ~scounteren_q[csr_addr_i[4:0]] & hcounteren_q[csr_addr_i[4:0]];
+                                privilege_violation = 1'b0;
                             end else begin
-                                privilege_violation = ~mcounteren_q[csr_addr_i[4:0]] & ~scounteren_q[csr_addr_i[4:0]];
+                                privilege_violation = 1'b0;
                             end
                         end
                     endcase
@@ -1920,8 +1932,8 @@ module csr_regfile import ariane_pkg::*; #(
                 if (csr_addr_i inside {[riscv::CSR_CYCLE:riscv::CSR_HPM_COUNTER_31]}) begin
                     unique case (priv_lvl_o)
                         riscv::PRIV_LVL_M: privilege_violation = 1'b0;
-                        riscv::PRIV_LVL_S: privilege_violation = ~mcounteren_q[csr_addr_i[4:0]];
-                        riscv::PRIV_LVL_U: privilege_violation = ~mcounteren_q[csr_addr_i[4:0]] & ~scounteren_q[csr_addr_i[4:0]];
+                        riscv::PRIV_LVL_S: privilege_violation = 1'b0;
+                        riscv::PRIV_LVL_U: privilege_violation = 1'b0;
                     endcase
                 end
             end
