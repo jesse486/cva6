@@ -1,0 +1,74 @@
+diff --git a/Flist.ariane b/Flist.ariane
+index 66a1d04d..09205bb1 100644
+--- a/Flist.ariane
++++ b/Flist.ariane
+@@ -19,6 +19,12 @@
+ +incdir+common/local/util/
+ +incdir+corev_apu/register_interface/include/
+ 
++corev_apu/aia/rtl/package/aplic_domain_pkg.sv
++corev_apu/aia/rtl/package/aia_pkg.sv
++corev_apu/aia/rtl/package/imsic_protocol_pkg.sv
++corev_apu/aia/rtl/package/aplic_pkg.sv
++corev_apu/aia/rtl/package/imsic_pkg.sv
++core/include/ariane_dm_pkg.sv
+ core/include/cv64a6_imafdc_sv39_openpiton_config_pkg.sv
+ core/include/riscv_pkg.sv
+ corev_apu/riscv-dbg/src/dm_pkg.sv
+@@ -55,7 +61,7 @@ vendor/pulp-platform/tech_cells_generic/src/deprecated/pulp_clk_cells.sv
+ common/local/util/tc_sram_wrapper.sv
+ vendor/pulp-platform/tech_cells_generic/src/rtl/tc_sram.sv
+ vendor/pulp-platform/tech_cells_generic/src/rtl/tc_clk.sv
+-core/axi_adapter.sv
++corev_apu/tb/axi_adapter.sv
+ core/alu.sv
+ core/fpu_wrap.sv
+ core/ariane.sv
+diff --git a/core/include/cv64a6_imafdc_sv39_openpiton_config_pkg.sv b/core/include/cv64a6_imafdc_sv39_openpiton_config_pkg.sv
+index 172b308c..60bff200 100644
+--- a/core/include/cv64a6_imafdc_sv39_openpiton_config_pkg.sv
++++ b/core/include/cv64a6_imafdc_sv39_openpiton_config_pkg.sv
+@@ -54,4 +54,13 @@ package cva6_config_pkg;
+ 
+     localparam CVA6ConfigNrPMPEntries = 8;
+ 
++    // AIA Config
++    localparam CVA6ConfigNrVSIntpFiles      = aia_pkg::UserNrVSIntpFiles;
++    localparam CVA6ConfigNrVSIntpFilesW     = $clog2(CVA6ConfigNrVSIntpFiles);
++    localparam CVA6ConfigNrIntpFiles        = 2 + CVA6ConfigNrVSIntpFiles;
++    // multiple of 64, and may be a minimum of 64 and a maximum of 2048
++    localparam CVA6ConfigNrSourcesImsic    = aia_pkg::UserNrSourcesImsic;
++    localparam CVA6ConfigNrSourcesW       = $clog2(CVA6ConfigNrSourcesImsic);
++
++
+ endpackage
+diff --git a/corev_apu/openpiton/ariane_verilog_wrap.sv b/corev_apu/openpiton/ariane_verilog_wrap.sv
+index 6979a88c..98226f2b 100644
+--- a/corev_apu/openpiton/ariane_verilog_wrap.sv
++++ b/corev_apu/openpiton/ariane_verilog_wrap.sv
+@@ -51,7 +51,9 @@ module ariane_verilog_wrap
+   // Timer facilities
+   input                       time_irq_i,   // timer interrupt in (async)
+   input                       debug_req_i,  // debug request (async)
+-
++  // AIA                    
++  output imsic_pkg::csr_channel_to_imsic_t     aia_csr_hart2imsic,
++  input  imsic_pkg::csr_channel_to_imsic_t     aia_csr_imsic2hart,
+ `ifdef PITON_ARIANE
+   // L15 (memory side)
+   output [$size(wt_cache_pkg::l15_req_t)-1:0]  l15_req_o,
+@@ -200,6 +202,8 @@ module ariane_verilog_wrap
+     .rst_ni      ( spc_grst_l ),
+     .boot_addr_i              ,// constant
+     .hart_id_i                ,// constant
++    .imsic_csr_o ( aia_csr_hart2imsic ),
++    .imsic_csr_i ( aia_csr_imsic2hart ),
+     .irq_i       ( irq        ),
+     .ipi_i       ( ipi        ),
+     .time_irq_i  ( time_irq   ),
+diff --git a/corev_apu/rv_plic b/corev_apu/rv_plic
+--- a/corev_apu/rv_plic
++++ b/corev_apu/rv_plic
+@@ -1 +1 @@
+-Subproject commit 5b5c5a4c1c15c3d7bb833071d344b2c2bc5f599d
++Subproject commit 5b5c5a4c1c15c3d7bb833071d344b2c2bc5f599d-dirty

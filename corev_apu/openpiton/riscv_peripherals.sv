@@ -26,6 +26,8 @@
 //
 `include "register_interface/assign.svh"
 `include "register_interface/typedef.svh"
+`include "axi/assign.svh"
+`include "axi/typedef.svh"
 
 module riscv_peripherals #(
     parameter int unsigned DataWidth       = 64,
@@ -70,6 +72,13 @@ module riscv_peripherals #(
     output [DataWidth-1:0]              ariane_plic_buf_noc3_data_o,
     output                              ariane_plic_buf_noc3_valid_o,
     input                               buf_ariane_plic_noc3_ready_i,
+    // APLIC 
+    input [DataWidth-1:0]               buf_ariane_aplic_noc2_data_i,
+    input                               buf_ariane_aplic_noc2_valid_i,
+    output                              ariane_aplic_buf_noc2_ready_o,
+    output [DataWidth-1:0]              ariane_aplic_buf_noc3_data_o,
+    output                              ariane_aplic_buf_noc3_valid_o,
+    input                               buf_ariane_aplic_noc3_ready_i,
     // This selects either the BM or linux bootrom
     input                               ariane_boot_sel_i,
     // Debug sigs to cores
@@ -88,10 +97,9 @@ module riscv_peripherals #(
     input                               rtc_i,        // Real-time clock in (usually 32.768 kHz)
     output [NumHarts-1:0]               timer_irq_o,  // Timer interrupts
     output [NumHarts-1:0]               ipi_o,        // software interrupt (a.k.a inter-process-interrupt)
-    // PLIC
-    input  [NumSources-1:0]             irq_sources_i,
-    input  [NumSources-1:0]             irq_le_i,     // 0:level 1:edge
-    output [NumHarts-1:0][1:0]          irq_o         // level sensitive IR lines, mip & sip (async)
+    // APLIC
+    output imsic_pkg::csr_channel_from_imsic_t  [NumHarts-1:0]   aia_csr_imsic2hart,
+    input imsic_pkg::csr_channel_to_imsic_t     [NumHarts-1:0]   aia_csr_hart2imsic
 );
 
   localparam int unsigned AxiIdWidth    =  1;
@@ -545,7 +553,7 @@ module riscv_peripherals #(
 
 
   /////////////////////////////
-  // PLIC
+  // APLIC
   /////////////////////////////
 
   AXI_BUS #(
@@ -553,7 +561,7 @@ module riscv_peripherals #(
     .AXI_ADDR_WIDTH ( AxiAddrWidth ),
     .AXI_DATA_WIDTH ( AxiDataWidth ),
     .AXI_USER_WIDTH ( AxiUserWidth )
-  ) plic_master();
+  ) aplic_master();
 
   noc_axilite_bridge #(
     // this enables variable width accesses
@@ -563,77 +571,89 @@ module riscv_peripherals #(
     .SWAP_ENDIANESS         ( SwapEndianess ),
     // this disables shifting of unaligned read data
     .ALIGN_RDATA            ( 0             )
-  ) i_plic_axilite_bridge (
+  ) i_aplic_axilite_bridge (
     .clk                    ( clk_i                        ),
     .rst                    ( ~rst_ni                      ),
     // to/from NOC
-    .splitter_bridge_val    ( buf_ariane_plic_noc2_valid_i ),
-    .splitter_bridge_data   ( buf_ariane_plic_noc2_data_i  ),
-    .bridge_splitter_rdy    ( ariane_plic_buf_noc2_ready_o ),
-    .bridge_splitter_val    ( ariane_plic_buf_noc3_valid_o ),
-    .bridge_splitter_data   ( ariane_plic_buf_noc3_data_o  ),
-    .splitter_bridge_rdy    ( buf_ariane_plic_noc3_ready_i ),
+    .splitter_bridge_val    ( buf_ariane_aplic_noc2_valid_i ),
+    .splitter_bridge_data   ( buf_ariane_aplic_noc2_data_i  ),
+    .bridge_splitter_rdy    ( ariane_aplic_buf_noc2_ready_o ),
+    .bridge_splitter_val    ( ariane_aplic_buf_noc3_valid_o ),
+    .bridge_splitter_data   ( ariane_aplic_buf_noc3_data_o  ),
+    .splitter_bridge_rdy    ( buf_ariane_aplic_noc3_ready_i ),
     //axi lite signals
     //write address channel
-    .m_axi_awaddr           ( plic_master.aw_addr               ),
-    .m_axi_awvalid          ( plic_master.aw_valid              ),
-    .m_axi_awready          ( plic_master.aw_ready              ),
+    .m_axi_awaddr           ( aplic_master.aw_addr               ),
+    .m_axi_awvalid          ( aplic_master.aw_valid              ),
+    .m_axi_awready          ( aplic_master.aw_ready              ),
     //write data channel
-    .m_axi_wdata            ( plic_master.w_data                ),
-    .m_axi_wstrb            ( plic_master.w_strb                ),
-    .m_axi_wvalid           ( plic_master.w_valid               ),
-    .m_axi_wready           ( plic_master.w_ready               ),
+    .m_axi_wdata            ( aplic_master.w_data                ),
+    .m_axi_wstrb            ( aplic_master.w_strb                ),
+    .m_axi_wvalid           ( aplic_master.w_valid               ),
+    .m_axi_wready           ( aplic_master.w_ready               ),
     //read address channel
-    .m_axi_araddr           ( plic_master.ar_addr               ),
-    .m_axi_arvalid          ( plic_master.ar_valid              ),
-    .m_axi_arready          ( plic_master.ar_ready              ),
+    .m_axi_araddr           ( aplic_master.ar_addr               ),
+    .m_axi_arvalid          ( aplic_master.ar_valid              ),
+    .m_axi_arready          ( aplic_master.ar_ready              ),
     //read data channel
-    .m_axi_rdata            ( plic_master.r_data                ),
-    .m_axi_rresp            ( plic_master.r_resp                ),
-    .m_axi_rvalid           ( plic_master.r_valid               ),
-    .m_axi_rready           ( plic_master.r_ready               ),
+    .m_axi_rdata            ( aplic_master.r_data                ),
+    .m_axi_rresp            ( aplic_master.r_resp                ),
+    .m_axi_rvalid           ( aplic_master.r_valid               ),
+    .m_axi_rready           ( aplic_master.r_ready               ),
     //write response channel
-    .m_axi_bresp            ( plic_master.b_resp                ),
-    .m_axi_bvalid           ( plic_master.b_valid               ),
-    .m_axi_bready           ( plic_master.b_ready               ),
+    .m_axi_bresp            ( aplic_master.b_resp                ),
+    .m_axi_bvalid           ( aplic_master.b_valid               ),
+    .m_axi_bready           ( aplic_master.b_ready               ),
     // non-axi-lite signals
-    .w_reqbuf_size          ( plic_master.aw_size               ),
-    .r_reqbuf_size          ( plic_master.ar_size               )
+    .w_reqbuf_size          ( aplic_master.aw_size               ),
+    .r_reqbuf_size          ( aplic_master.ar_size               )
   );
 
   // tie off signals not used by AXI-lite
-  assign plic_master.aw_id     = '0;
-  assign plic_master.aw_len    = '0;
-  assign plic_master.aw_burst  = '0;
-  assign plic_master.aw_lock   = '0;
-  assign plic_master.aw_cache  = '0;
-  assign plic_master.aw_prot   = '0;
-  assign plic_master.aw_qos    = '0;
-  assign plic_master.aw_region = '0;
-  assign plic_master.aw_atop   = '0;
-  assign plic_master.w_last    = 1'b1;
-  assign plic_master.ar_id     = '0;
-  assign plic_master.ar_len    = '0;
-  assign plic_master.ar_burst  = '0;
-  assign plic_master.ar_lock   = '0;
-  assign plic_master.ar_cache  = '0;
-  assign plic_master.ar_prot   = '0;
-  assign plic_master.ar_qos    = '0;
-  assign plic_master.ar_region = '0;
+  assign aplic_master.aw_id     = '0;
+  assign aplic_master.aw_len    = '0;
+  assign aplic_master.aw_burst  = '0;
+  assign aplic_master.aw_lock   = '0;
+  assign aplic_master.aw_cache  = '0;
+  assign aplic_master.aw_prot   = '0;
+  assign aplic_master.aw_qos    = '0;
+  assign aplic_master.aw_region = '0;
+  assign aplic_master.aw_atop   = '0;
+  assign aplic_master.w_last    = 1'b1;
+  assign aplic_master.ar_id     = '0;
+  assign aplic_master.ar_len    = '0;
+  assign aplic_master.ar_burst  = '0;
+  assign aplic_master.ar_lock   = '0;
+  assign aplic_master.ar_cache  = '0;
+  assign aplic_master.ar_prot   = '0;
+  assign aplic_master.ar_qos    = '0;
+  assign aplic_master.ar_region = '0;
 
   // define reg type according to REG_BUS above
-  `REG_BUS_TYPEDEF_ALL(plic, logic[31:0], logic[31:0], logic[3:0])
-  plic_req_t plic_req;
-  plic_rsp_t plic_resp;
+  `REG_BUS_TYPEDEF_ALL(aplic, logic[31:0], logic[31:0], logic[3:0])
+  aplic_reg_req_t aplic_req;
+  aplic_reg_rsp_t aplic_resp;
+
+  // MSI Bus to signal interrupts to the IMSIC
+  ariane_axi_soc::req_slv_t    msi_req;
+  ariane_axi_soc::resp_slv_t   msi_resp;
+  `AXI_ASSIGN_TO_REQ(msi_req, imsic)
+  `AXI_ASSIGN_FROM_RESP(imsic, msi_resp)
+
+  localparam imsic_protocol_pkg::protocol_cfg_t ImsicProtocolCfg = '{
+    AXI_ADDR_WIDTH: AxiAddrWidth,
+    AXI_DATA_WIDTH: AxiDataWidth,
+    AXI_ID_WIDTH:   AxiIdWidth
+  };
 
   enum logic [2:0] {Idle, WriteSecond, ReadSecond, WriteResp, ReadResp} state_d, state_q;
   logic [31:0] rword_d, rword_q;
 
   // register read data
-  assign rword_d = (plic_req.valid && !plic_req.write) ? plic_resp.rdata : rword_q;
-  assign plic_master.r_data = {plic_resp.rdata, rword_q};
+  assign rword_d = (aplic_req.valid && !aplic_req.write) ? aplic_resp.rdata : rword_q;
+  assign aplic_master.r_data = {aplic_resp.rdata, rword_q};
 
-  always_ff @(posedge clk_i or negedge rst_ni) begin : p_plic_regs
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_aplic_regs
     if (!rst_ni) begin
       state_q <= Idle;
       rword_q <= '0;
@@ -645,49 +665,49 @@ module riscv_peripherals #(
 
   // this is a simplified AXI statemachine, since the
   // W and AW requests always arrive at the same time here
-  always_comb begin : p_plic_if
+  always_comb begin : p_aplic_if
     automatic logic [31:0] waddr, raddr;
     // subtract the base offset (truncated to 32 bits)
-    waddr = plic_master.aw_addr[31:0] - 32'(PlicBase) + 32'hc000000;
-    raddr = plic_master.ar_addr[31:0] - 32'(PlicBase) + 32'hc000000;
+    waddr = aplic_master.aw_addr[31:0] - 32'(AplicBase) + 32'hc000000;
+    raddr = aplic_master.ar_addr[31:0] - 32'(AplicBase) + 32'hc000000;
 
     // AXI-lite
-    plic_master.aw_ready = plic_resp.ready;
-    plic_master.w_ready  = plic_resp.ready;
-    plic_master.ar_ready = plic_resp.ready;
+    aplic_master.aw_ready = aplic_resp.ready;
+    aplic_master.w_ready  = aplic_resp.ready;
+    aplic_master.ar_ready = aplic_resp.ready;
 
-    plic_master.r_valid  = 1'b0;
-    plic_master.r_resp   = '0;
-    plic_master.b_valid  = 1'b0;
-    plic_master.b_resp   = '0;
+    aplic_master.r_valid  = 1'b0;
+    aplic_master.r_resp   = '0;
+    aplic_master.b_valid  = 1'b0;
+    aplic_master.b_resp   = '0;
 
-    // PLIC
-    plic_req.valid       = 1'b0;
-    plic_req.wstrb       = '0;
-    plic_req.write       = 1'b0;
-    plic_req.wdata       = plic_master.w_data[31:0];
-    plic_req.addr        = waddr;
+    // APLIC
+    aplic_req.valid       = 1'b0;
+    aplic_req.wstrb       = '0;
+    aplic_req.write       = 1'b0;
+    aplic_req.wdata       = aplic_master.w_data[31:0];
+    aplic_req.addr        = waddr;
 
     // default
     state_d              = state_q;
 
     unique case (state_q)
       Idle: begin
-        if (plic_master.w_valid && plic_master.aw_valid && plic_resp.ready) begin
-          plic_req.valid = 1'b1;
-          plic_req.write = plic_master.w_strb[3:0];
-          plic_req.wstrb = '1;
+        if (aplic_master.w_valid && aplic_master.aw_valid && aplic_resp.ready) begin
+          aplic_req.valid = 1'b1;
+          aplic_req.write = plic_master.w_strb[3:0];
+          aplic_req.wstrb = '1;
           // this is a 64bit write, need to write second 32bit chunk in second cycle
-          if (plic_master.aw_size == 3'b11) begin
+          if (aplic_master.aw_size == 3'b11) begin
             state_d = WriteSecond;
           end else begin
             state_d = WriteResp;
           end
-        end else if (plic_master.ar_valid && plic_resp.ready) begin
-          plic_req.valid = 1'b1;
-          plic_req.addr  = raddr;
+        end else if (aplic_master.ar_valid && aplic_resp.ready) begin
+          aplic_req.valid = 1'b1;
+          aplic_req.addr  = raddr;
           // this is a 64bit read, need to read second 32bit chunk in second cycle
-          if (plic_master.ar_size == 3'b11) begin
+          if (aplic_master.ar_size == 3'b11) begin
             state_d = ReadSecond;
           end else begin
             state_d = ReadResp;
@@ -696,46 +716,46 @@ module riscv_peripherals #(
       end
       // write high word
       WriteSecond: begin
-        plic_master.aw_ready = 1'b0;
-        plic_master.w_ready  = 1'b0;
-        plic_master.ar_ready = 1'b0;
-        plic_req.addr        = waddr + 32'h4;
-        plic_req.wdata       = plic_master.w_data[63:32];
-        if (plic_resp.ready && plic_master.b_ready) begin
-          plic_req.valid       = 1'b1;
-          plic_req.write       = 1'b1;
-          plic_req.wstrb       = '1;
-          plic_master.b_valid  = 1'b1;
+        aplic_master.aw_ready = 1'b0;
+        aplic_master.w_ready  = 1'b0;
+        aplic_master.ar_ready = 1'b0;
+        aplic_req.addr        = waddr + 32'h4;
+        aplic_req.wdata       = aplic_master.w_data[63:32];
+        if (aplic_resp.ready && aplic_master.b_ready) begin
+          aplic_req.valid       = 1'b1;
+          aplic_req.write       = 1'b1;
+          aplic_req.wstrb       = '1;
+          aplic_master.b_valid  = 1'b1;
           state_d              = Idle;
         end
       end
       // read high word
       ReadSecond: begin
-        plic_master.aw_ready = 1'b0;
-        plic_master.w_ready  = 1'b0;
-        plic_master.ar_ready = 1'b0;
-        plic_req.addr        = raddr + 32'h4;
-        if (plic_resp.ready && plic_master.r_ready) begin
-          plic_req.valid      = 1'b1;
-          plic_master.r_valid = 1'b1;
+        aplic_master.aw_ready = 1'b0;
+        aplic_master.w_ready  = 1'b0;
+        aplic_master.ar_ready = 1'b0;
+        aplic_req.addr        = raddr + 32'h4;
+        if (aplic_resp.ready && aplic_master.r_ready) begin
+          aplic_req.valid      = 1'b1;
+          aplic_master.r_valid = 1'b1;
           state_d             = Idle;
         end
       end
       WriteResp: begin
-        plic_master.aw_ready = 1'b0;
-        plic_master.w_ready  = 1'b0;
-        plic_master.ar_ready = 1'b0;
-        if (plic_master.b_ready) begin
-          plic_master.b_valid  = 1'b1;
+        aplic_master.aw_ready = 1'b0;
+        aplic_master.w_ready  = 1'b0;
+        aplic_master.ar_ready = 1'b0;
+        if (aplic_master.b_ready) begin
+          aplic_master.b_valid  = 1'b1;
           state_d              = Idle;
         end
       end
       ReadResp: begin
-        plic_master.aw_ready = 1'b0;
-        plic_master.w_ready  = 1'b0;
-        plic_master.ar_ready = 1'b0;
-        if (plic_master.r_ready) begin
-          plic_master.r_valid = 1'b1;
+        aplic_master.aw_ready = 1'b0;
+        aplic_master.w_ready  = 1'b0;
+        aplic_master.ar_ready = 1'b0;
+        if (aplic_master.r_ready) begin
+          aplic_master.r_valid = 1'b1;
           state_d             = Idle;
         end
       end
@@ -743,20 +763,24 @@ module riscv_peripherals #(
     endcase
   end
 
-  plic_top #(
-    .N_SOURCE    ( NumSources      ),
-    .N_TARGET    ( 2*NumHarts      ),
-    .MAX_PRIO    ( PlicMaxPriority ),
-    .reg_req_t   ( plic_req_t      ),
-    .reg_rsp_t   ( plic_rsp_t      )
-  ) i_plic (
-    .clk_i,
-    .rst_ni,
-    .req_i         ( plic_req    ),
-    .resp_o        ( plic_resp   ),
-    .le_i          ( irq_le_i    ), // 0:level 1:edge
-    .irq_sources_i,                 // already synchronized
-    .eip_targets_o ( irq_o       )
+  aplic_top #(
+    .AplicCfg       ( aplic_pkg::DefaultAplicCfg        ),
+    .ImsicCfg       ( imsic_pkg::DefaultImsicCfg        ),
+    .ProtocolCfg    ( ImsicProtocolCfg                  ),
+    .reg_req_t      ( aplic_reg_req_t                   ),
+    .reg_rsp_t      ( aplic_reg_rsp_t                   ),
+    .axi_req_t      ( ariane_axi_soc::req_slv_t         ),
+    .axi_resp_t     ( ariane_axi_soc::resp_slv_t        )
+  ) aplic_top_embedded_i (
+    .i_clk,
+    .ni_rst,
+    .i_irq_sources  ( {irq_sources[ariane_soc::NumSources-2:0], 1'b0}    ),
+    .i_req_cfg      ( aplic_req                         ),
+    .o_resp_cfg     ( aplic_resp                        ),
+    .i_imsic_csr    ( aia_csr_hart2imsic                ),
+    .o_imsic_csr    ( aia_csr_imsic2hart                ),         
+    .i_imsic_req    ( msi_req                           ),
+    .o_imsic_resp   ( msi_resp                          )
   );
 
 endmodule // riscv_peripherals

@@ -45,6 +45,9 @@ module ariane_verilog_wrap
   // Core ID, Cluster ID and boot address are considered more or less static
   input  [riscv::VLEN-1:0]               boot_addr_i,  // reset boot address
   input  [riscv::XLEN-1:0]               hart_id_i,    // hart id in a multicore environment (reflected in a CSR)
+  // IMSIC
+  input   imsic_pkg::csr_channel_from_imsic_t     aia_csr_imsic2hart,
+  output  imsic_pkg::csr_channel_to_imsic_t       aia_csr_hart2imsic,
   // Interrupt inputs
   input  [1:0]                irq_i,        // level sensitive IR lines, mip & sip (async)
   input                       ipi_i,        // inter-processor interrupts (async)
@@ -200,6 +203,8 @@ module ariane_verilog_wrap
     .rst_ni      ( spc_grst_l ),
     .boot_addr_i              ,// constant
     .hart_id_i                ,// constant
+    .imsic_csr_i  ( aia_csr_imsic2hart  ),
+    .imsic_csr_o  ( aia_csr_hart2imsic  ),
     .irq_i       ( irq        ),
     .ipi_i       ( ipi        ),
     .time_irq_i  ( time_irq   ),
