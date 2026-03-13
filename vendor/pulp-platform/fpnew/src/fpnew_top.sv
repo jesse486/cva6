@@ -71,11 +71,11 @@ module fpnew_top #(
   assign in_ready_o = in_valid_i & opgrp_in_ready[fpnew_pkg::get_opgroup(op_i)];
 
   // NaN-boxing check
-  for (genvar fmt = 0; fmt < int'(NUM_FORMATS); fmt++) begin : gen_nanbox_check
+  for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : gen_nanbox_check
     localparam int unsigned FP_WIDTH = fpnew_pkg::fp_width(fpnew_pkg::fp_format_e'(fmt));
     // NaN boxing is only generated if it's enabled and needed
     if (Features.EnableNanBox && (FP_WIDTH < WIDTH)) begin : check
-      for (genvar op = 0; op < int'(NUM_OPERANDS); op++) begin : operands
+      for (genvar op = 0; op < NUM_OPERANDS; op++) begin : operands
         assign is_boxed[fmt][op] = (!vectorial_op_i)
                                    ? operands_i[op][WIDTH-1:FP_WIDTH] == '1
                                    : 1'b1;
@@ -88,7 +88,7 @@ module fpnew_top #(
   // -------------------------
   // Generate Operation Blocks
   // -------------------------
-  for (genvar opgrp = 0; opgrp < int'(NUM_OPGROUPS); opgrp++) begin : gen_operation_groups
+  for (genvar opgrp = 0; opgrp < NUM_OPGROUPS; opgrp++) begin : gen_operation_groups
     localparam int unsigned NUM_OPS = fpnew_pkg::num_operands(fpnew_pkg::opgroup_e'(opgrp));
 
     logic in_valid;

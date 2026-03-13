@@ -168,3 +168,12 @@ core/cvxif_example/instr_decoder.sv
 vendor/pulp-platform/common_cells/src/counter.sv
 vendor/pulp-platform/common_cells/src/delta_counter.sv
 core/cvxif_fu.sv
+corev_apu/aia/rtl/imsic_regmap.sv
+corev_apu/aia/rtl/imsic_top.sv
+corev_apu/aia/rtl/aplic_domain_regctl.sv
+corev_apu/aia/rtl/aplic_regmap.sv
+corev_apu/aia/rtl/aplic_domain_gateway.sv
+corev_apu/aia/rtl/aplic_domain_notifier.sv
+corev_apu/aia/rtl/aplic_domain_top.sv
+corev_apu/aia/rtl/util/synchronizer_multi_level.sv
+corev_apu/aia/rtl/aplic_top.sv

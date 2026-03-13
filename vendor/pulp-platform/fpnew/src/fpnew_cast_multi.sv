@@ -187,7 +187,7 @@ module fpnew_cast_multi #(
   logic [INT_MAN_WIDTH-1:0]                      int_value, int_mantissa;
 
   // FP Input initialization
-  for (genvar fmt = 0; fmt < int'(NUM_FORMATS); fmt++) begin : fmt_init_inputs
+  for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : fmt_init_inputs
     // Set up some constants
     localparam int unsigned FP_WIDTH = fpnew_pkg::fp_width(fpnew_pkg::fp_format_e'(fmt));
     localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));
@@ -219,7 +219,7 @@ module fpnew_cast_multi #(
   end
 
   // Sign-extend INT input
-  for (genvar ifmt = 0; ifmt < int'(NUM_INT_FORMATS); ifmt++) begin : gen_sign_extend_int
+  for (genvar ifmt = 0; ifmt < NUM_INT_FORMATS; ifmt++) begin : gen_sign_extend_int
     // Set up some constants
     localparam int unsigned INT_WIDTH = fpnew_pkg::int_width(fpnew_pkg::int_format_e'(ifmt));
 
@@ -499,7 +499,7 @@ module fpnew_cast_multi #(
 
 
   // Pack exponent and mantissa into proper rounding form
-  for (genvar fmt = 0; fmt < int'(NUM_FORMATS); fmt++) begin : gen_res_assemble
+  for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : gen_res_assemble
     // Set up some constants
     localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));
     localparam int unsigned MAN_BITS = fpnew_pkg::man_bits(fpnew_pkg::fp_format_e'(fmt));
@@ -514,7 +514,7 @@ module fpnew_cast_multi #(
   end
 
   // Sign-extend integer result
-  for (genvar ifmt = 0; ifmt < int'(NUM_INT_FORMATS); ifmt++) begin : gen_int_res_sign_ext
+  for (genvar ifmt = 0; ifmt < NUM_INT_FORMATS; ifmt++) begin : gen_int_res_sign_ext
     // Set up some constants
     localparam int unsigned INT_WIDTH = fpnew_pkg::int_width(fpnew_pkg::int_format_e'(ifmt));
 
@@ -548,7 +548,7 @@ module fpnew_cast_multi #(
   logic [NUM_FORMATS-1:0][WIDTH-1:0] fmt_result;
 
   // Detect overflows and inject sign
-  for (genvar fmt = 0; fmt < int'(NUM_FORMATS); fmt++) begin : gen_sign_inject
+  for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : gen_sign_inject
     // Set up some constants
     localparam int unsigned FP_WIDTH = fpnew_pkg::fp_width(fpnew_pkg::fp_format_e'(fmt));
     localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));
@@ -591,7 +591,7 @@ module fpnew_cast_multi #(
   logic [NUM_FORMATS-1:0][WIDTH-1:0] fmt_special_result;
 
   // Special result construction
-  for (genvar fmt = 0; fmt < int'(NUM_FORMATS); fmt++) begin : gen_special_results
+  for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : gen_special_results
     // Set up some constants
     localparam int unsigned FP_WIDTH = fpnew_pkg::fp_width(fpnew_pkg::fp_format_e'(fmt));
     localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));
@@ -637,7 +637,7 @@ module fpnew_cast_multi #(
   logic [NUM_INT_FORMATS-1:0][WIDTH-1:0] ifmt_special_result;
 
   // Special result construction
-  for (genvar ifmt = 0; ifmt < int'(NUM_INT_FORMATS); ifmt++) begin : gen_special_results_int
+  for (genvar ifmt = 0; ifmt < NUM_INT_FORMATS; ifmt++) begin : gen_special_results_int
     // Set up some constants
     localparam int unsigned INT_WIDTH = fpnew_pkg::int_width(fpnew_pkg::int_format_e'(ifmt));
 

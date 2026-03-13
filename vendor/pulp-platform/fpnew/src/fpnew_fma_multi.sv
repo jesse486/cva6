@@ -171,7 +171,7 @@ module fpnew_fma_multi #(
   fpnew_pkg::fp_info_t [NUM_FORMATS-1:0][2:0] info_q;
 
   // FP Input initialization
-  for (genvar fmt = 0; fmt < int'(NUM_FORMATS); fmt++) begin : fmt_init_inputs
+  for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : fmt_init_inputs
     // Set up some constants
     localparam int unsigned FP_WIDTH = fpnew_pkg::fp_width(fpnew_pkg::fp_format_e'(fmt));
     localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));
@@ -284,7 +284,7 @@ module fpnew_fma_multi #(
   logic [NUM_FORMATS-1:0]               fmt_result_is_special;
 
 
-  for (genvar fmt = 0; fmt < int'(NUM_FORMATS); fmt++) begin : gen_special_results
+  for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : gen_special_results
     // Set up some constants
     localparam int unsigned FP_WIDTH = fpnew_pkg::fp_width(fpnew_pkg::fp_format_e'(fmt));
     localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));
@@ -664,7 +664,7 @@ module fpnew_fma_multi #(
   assign uf_before_round = final_exponent == 0;               // exponent for subnormals capped to 0
 
   // Pack exponent and mantissa into proper rounding form
-  for (genvar fmt = 0; fmt < int'(NUM_FORMATS); fmt++) begin : gen_res_assemble
+  for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : gen_res_assemble
     // Set up some constants
     localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));
     localparam int unsigned MAN_BITS = fpnew_pkg::man_bits(fpnew_pkg::fp_format_e'(fmt));
@@ -719,7 +719,7 @@ module fpnew_fma_multi #(
 
   logic [NUM_FORMATS-1:0][WIDTH-1:0] fmt_result;
 
-  for (genvar fmt = 0; fmt < int'(NUM_FORMATS); fmt++) begin : gen_sign_inject
+  for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : gen_sign_inject
     // Set up some constants
     localparam int unsigned FP_WIDTH = fpnew_pkg::fp_width(fpnew_pkg::fp_format_e'(fmt));
     localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));

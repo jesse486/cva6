@@ -29,7 +29,7 @@
 `include "axi/assign.svh"
 `include "axi/typedef.svh"
 
-module riscv_peripherals #(
+module riscv_peripherals import ariane_pkg::*; #(
     parameter int unsigned DataWidth       = 64,
     parameter int unsigned NumHarts        =  1,
     parameter int unsigned NumSources      =  1,
@@ -72,13 +72,20 @@ module riscv_peripherals #(
     output [DataWidth-1:0]              ariane_plic_buf_noc3_data_o,
     output                              ariane_plic_buf_noc3_valid_o,
     input                               buf_ariane_plic_noc3_ready_i,
-    // APLIC 
+    // APLIC
     input [DataWidth-1:0]               buf_ariane_aplic_noc2_data_i,
     input                               buf_ariane_aplic_noc2_valid_i,
     output                              ariane_aplic_buf_noc2_ready_o,
     output [DataWidth-1:0]              ariane_aplic_buf_noc3_data_o,
     output                              ariane_aplic_buf_noc3_valid_o,
     input                               buf_ariane_aplic_noc3_ready_i,
+    // IMSIC MSI bus (software writes MSI vectors here to trigger interrupts)
+    input [DataWidth-1:0]               buf_ariane_imsic_noc2_data_i,
+    input                               buf_ariane_imsic_noc2_valid_i,
+    output                              ariane_imsic_buf_noc2_ready_o,
+    output [DataWidth-1:0]              ariane_imsic_buf_noc3_data_o,
+    output                              ariane_imsic_buf_noc3_valid_o,
+    input                               buf_ariane_imsic_noc3_ready_i,
     // This selects either the BM or linux bootrom
     input                               ariane_boot_sel_i,
     // Debug sigs to cores
@@ -98,8 +105,10 @@ module riscv_peripherals #(
     output [NumHarts-1:0]               timer_irq_o,  // Timer interrupts
     output [NumHarts-1:0]               ipi_o,        // software interrupt (a.k.a inter-process-interrupt)
     // APLIC
+    output [NumHarts*ariane_pkg::NrIntpFiles-1:0]  irq_o,
+    // IMSIC
     output imsic_pkg::csr_channel_from_imsic_t  [NumHarts-1:0]   aia_csr_imsic2hart,
-    input imsic_pkg::csr_channel_to_imsic_t     [NumHarts-1:0]   aia_csr_hart2imsic
+    input  imsic_pkg::csr_channel_to_imsic_t    [NumHarts-1:0]   aia_csr_hart2imsic
 );
 
   localparam int unsigned AxiIdWidth    =  1;
@@ -465,6 +474,7 @@ module riscv_peripherals #(
   assign br_master.ar_prot   = '0;
   assign br_master.ar_qos    = '0;
   assign br_master.ar_region = '0;
+
   /////////////////////////////
   // CLINT
   /////////////////////////////
@@ -551,9 +561,8 @@ module riscv_peripherals #(
   assign clint_axi_req.ar.qos    = '0;
   assign clint_axi_req.ar.region = '0;
 
-
   /////////////////////////////
-  // APLIC
+  // APLIC & IMSIC
   /////////////////////////////
 
   AXI_BUS #(
@@ -562,6 +571,13 @@ module riscv_peripherals #(
     .AXI_DATA_WIDTH ( AxiDataWidth ),
     .AXI_USER_WIDTH ( AxiUserWidth )
   ) aplic_master();
+
+  AXI_BUS #(
+    .AXI_ID_WIDTH   ( AxiIdWidth   ),
+    .AXI_ADDR_WIDTH ( AxiAddrWidth ),
+    .AXI_DATA_WIDTH ( AxiDataWidth ),
+    .AXI_USER_WIDTH ( AxiUserWidth )
+  ) imsic_master();
 
   noc_axilite_bridge #(
     // this enables variable width accesses
@@ -629,16 +645,201 @@ module riscv_peripherals #(
   assign aplic_master.ar_qos    = '0;
   assign aplic_master.ar_region = '0;
 
-  // define reg type according to REG_BUS above
-  `REG_BUS_TYPEDEF_ALL(aplic, logic[31:0], logic[31:0], logic[3:0])
-  aplic_reg_req_t aplic_req;
-  aplic_reg_rsp_t aplic_resp;
+  noc_axilite_bridge #(
+    // this enables variable width accesses
+    // note that the accesses are still 64bit, but the
+    // write-enables are generated according to the access size
+    .SLAVE_RESP_BYTEWIDTH   ( 0             ),
+    .SWAP_ENDIANESS         ( SwapEndianess ),
+    // this disables shifting of unaligned read data
+    .ALIGN_RDATA            ( 0             )
+  ) i_imsic_axilite_bridge (
+    .clk                    ( clk_i                        ),
+    .rst                    ( ~rst_ni                      ),
+    // to/from NOC
+    .splitter_bridge_val    ( buf_ariane_imsic_noc2_valid_i ),
+    .splitter_bridge_data   ( buf_ariane_imsic_noc2_data_i  ),
+    .bridge_splitter_rdy    ( ariane_imsic_buf_noc2_ready_o ),
+    .bridge_splitter_val    ( ariane_imsic_buf_noc3_valid_o ),
+    .bridge_splitter_data   ( ariane_imsic_buf_noc3_data_o  ),
+    .splitter_bridge_rdy    ( buf_ariane_imsic_noc3_ready_i ),
+    //axi lite signals
+    //write address channel
+    .m_axi_awaddr           ( imsic_master.aw_addr               ),
+    .m_axi_awvalid          ( imsic_master.aw_valid              ),
+    .m_axi_awready          ( imsic_master.aw_ready              ),
+    //write data channel
+    .m_axi_wdata            ( imsic_master.w_data                ),
+    .m_axi_wstrb            ( imsic_master.w_strb                ),
+    .m_axi_wvalid           ( imsic_master.w_valid               ),
+    .m_axi_wready           ( imsic_master.w_ready               ),
+    //read address channel
+    .m_axi_araddr           ( imsic_master.ar_addr               ),
+    .m_axi_arvalid          ( imsic_master.ar_valid              ),
+    .m_axi_arready          ( imsic_master.ar_ready              ),
+    //read data channel
+    .m_axi_rdata            ( imsic_master.r_data                ),
+    .m_axi_rresp            ( imsic_master.r_resp                ),
+    .m_axi_rvalid           ( imsic_master.r_valid               ),
+    .m_axi_rready           ( imsic_master.r_ready               ),
+    //write response channel
+    .m_axi_bresp            ( imsic_master.b_resp                ),
+    .m_axi_bvalid           ( imsic_master.b_valid               ),
+    .m_axi_bready           ( imsic_master.b_ready               ),
+    // non-axi-lite signals
+    .w_reqbuf_size          ( imsic_master.aw_size               ),
+    .r_reqbuf_size          ( imsic_master.ar_size               )
+  );
+
+  // tie off signals not used by AXI-lite
+  assign imsic_master.aw_id     = '0;
+  assign imsic_master.aw_len    = '0;
+  assign imsic_master.aw_burst  = '0;
+  assign imsic_master.aw_lock   = '0;
+  assign imsic_master.aw_cache  = '0;
+  assign imsic_master.aw_prot   = '0;
+  assign imsic_master.aw_qos    = '0;
+  assign imsic_master.aw_region = '0;
+  assign imsic_master.aw_atop   = '0;
+  assign imsic_master.w_last    = 1'b1;
+  assign imsic_master.ar_id     = '0;
+  assign imsic_master.ar_len    = '0;
+  assign imsic_master.ar_burst  = '0;
+  assign imsic_master.ar_lock   = '0;
+  assign imsic_master.ar_cache  = '0;
+  assign imsic_master.ar_prot   = '0;
+  assign imsic_master.ar_qos    = '0;
+  assign imsic_master.ar_region = '0;
+
+  // irq_sources
+  localparam int unsigned UART_IRQ         = 32'd0;
+  localparam int unsigned SPI_IRQ          = 32'd1;
+  localparam int unsigned ETH_IRQ          = 32'd2;
+  localparam int unsigned TIMER_FIRST_IRQ  = 32'd3;
+  localparam int unsigned TIMER_LAST_IRQ   = 32'd6;
+  localparam int unsigned LAST_IRQ         = TIMER_LAST_IRQ + 1;
+  logic [ariane_soc::NumSources-1:0] irq_sources;
+
+  // Unused interrupt sources
+  assign irq_sources[ariane_soc::NumSources-1:LAST_IRQ] = '0;
+
+  // APLIC configuration Bus (AXI => APB => REG)
+  ariane_axi_soc::req_slv_t  aplic_cfg_req;
+  ariane_axi_soc::resp_slv_t aplic_cfg_rsp;
+  `AXI_ASSIGN_TO_REQ(aplic_cfg_req, aplic_master)
+  `AXI_ASSIGN_FROM_RESP(aplic_master, aplic_cfg_rsp)
+
+  REG_BUS #(
+    .ADDR_WIDTH ( 32 ),
+    .DATA_WIDTH ( 32 )
+  ) aplic_reg_bus (clk_i);
+
+  logic         aplic_penable;
+  logic         aplic_pwrite;
+  logic [31:0]  aplic_paddr;
+  logic         aplic_psel;
+  logic [31:0]  aplic_pwdata;
+  logic [31:0]  aplic_prdata;
+  logic         aplic_pready;
+  logic         aplic_pslverr;
+
+    axi2apb_64_32 #(
+        .AXI4_ADDRESS_WIDTH ( AxiAddrWidth  ),
+        .AXI4_RDATA_WIDTH   ( AxiDataWidth  ),
+        .AXI4_WDATA_WIDTH   ( AxiDataWidth  ),
+        .AXI4_ID_WIDTH      ( AxiIdWidth    ),
+        .AXI4_USER_WIDTH    ( AxiUserWidth  ),
+        .BUFF_DEPTH_SLAVE   ( 2             ),
+        .APB_ADDR_WIDTH     ( 32            )
+    ) i_axi2apb_64_32_aplic (
+        .ACLK      ( clk_i          ),
+        .ARESETn   ( rst_ni         ),
+        .test_en_i ( 1'b0           ),
+        // AW
+        .AWID_i    ( aplic_cfg_req.aw.id     ),
+        .AWADDR_i  ( aplic_cfg_req.aw.addr   ),
+        .AWLEN_i   ( aplic_cfg_req.aw.len    ),
+        .AWSIZE_i  ( aplic_cfg_req.aw.size   ),
+        .AWBURST_i ( aplic_cfg_req.aw.burst  ),
+        .AWLOCK_i  ( aplic_cfg_req.aw.lock   ),
+        .AWCACHE_i ( aplic_cfg_req.aw.cache  ),
+        .AWPROT_i  ( aplic_cfg_req.aw.prot   ),
+        .AWREGION_i( aplic_cfg_req.aw.region ),
+        .AWUSER_i  ( aplic_cfg_req.aw.user   ),
+        .AWQOS_i   ( aplic_cfg_req.aw.qos    ),
+        .AWVALID_i ( aplic_cfg_req.aw_valid  ),
+        .AWREADY_o ( aplic_cfg_rsp.aw_ready ),
+        // W
+        .WDATA_i   ( aplic_cfg_req.w.data    ),
+        .WSTRB_i   ( aplic_cfg_req.w.strb    ),
+        .WLAST_i   ( aplic_cfg_req.w.last    ),
+        .WUSER_i   ( aplic_cfg_req.w.user    ),
+        .WVALID_i  ( aplic_cfg_req.w_valid   ),
+        .WREADY_o  ( aplic_cfg_rsp.w_ready  ),
+        // B
+        .BID_o     ( aplic_cfg_rsp.b.id     ),
+        .BRESP_o   ( aplic_cfg_rsp.b.resp   ),
+        .BUSER_o   ( aplic_cfg_rsp.b.user   ),
+        .BVALID_o  ( aplic_cfg_rsp.b_valid  ),
+        .BREADY_i  ( aplic_cfg_req.b_ready   ),
+        // AR
+        .ARID_i    ( aplic_cfg_req.ar.id     ),
+        .ARADDR_i  ( aplic_cfg_req.ar.addr   ),
+        .ARLEN_i   ( aplic_cfg_req.ar.len    ),
+        .ARSIZE_i  ( aplic_cfg_req.ar.size   ),
+        .ARBURST_i ( aplic_cfg_req.ar.burst  ),
+        .ARLOCK_i  ( aplic_cfg_req.ar.lock   ),
+        .ARCACHE_i ( aplic_cfg_req.ar.cache  ),
+        .ARPROT_i  ( aplic_cfg_req.ar.prot   ),
+        .ARREGION_i( aplic_cfg_req.ar.region ),
+        .ARUSER_i  ( aplic_cfg_req.ar.user   ),
+        .ARQOS_i   ( aplic_cfg_req.ar.qos    ),
+        .ARVALID_i ( aplic_cfg_req.ar_valid  ),
+        .ARREADY_o ( aplic_cfg_rsp.ar_ready ),
+        // R
+        .RID_o     ( aplic_cfg_rsp.r.id     ),
+        .RDATA_o   ( aplic_cfg_rsp.r.data   ),
+        .RRESP_o   ( aplic_cfg_rsp.r.resp   ),
+        .RLAST_o   ( aplic_cfg_rsp.r.last   ),
+        .RUSER_o   ( aplic_cfg_rsp.r.user   ),
+        .RVALID_o  ( aplic_cfg_rsp.r_valid  ),
+        .RREADY_i  ( aplic_cfg_req.r_ready   ),
+        // APB IF
+        .PENABLE   ( aplic_penable   ),
+        .PWRITE    ( aplic_pwrite    ),
+        .PADDR     ( aplic_paddr     ),
+        .PSEL      ( aplic_psel      ),
+        .PWDATA    ( aplic_pwdata    ),
+        .PRDATA    ( aplic_prdata    ),
+        .PREADY    ( aplic_pready    ),
+        .PSLVERR   ( aplic_pslverr   )
+    );
+
+    apb_to_reg i_aplic_apb_to_reg (
+        .clk_i     ( clk_i         ),
+        .rst_ni    ( rst_ni        ),
+        .penable_i ( aplic_penable ),
+        .pwrite_i  ( aplic_pwrite  ),
+        .paddr_i   ( aplic_paddr   ),
+        .psel_i    ( aplic_psel    ),
+        .pwdata_i  ( aplic_pwdata  ),
+        .prdata_o  ( aplic_prdata  ),
+        .pready_o  ( aplic_pready  ),
+        .pslverr_o ( aplic_pslverr ),
+        .reg_o     ( aplic_reg_bus )
+    );
+
+  `REG_BUS_TYPEDEF_ALL(aplic_reg, ariane_axi_soc::addr_t, logic[31:0], logic[3:0])
+  aplic_reg_req_t aplic_regmap_req;
+  aplic_reg_rsp_t aplic_regmap_resp;
+  `REG_BUS_ASSIGN_TO_REQ(aplic_regmap_req, aplic_reg_bus)
+  `REG_BUS_ASSIGN_FROM_RSP(aplic_reg_bus, aplic_regmap_resp)
 
   // MSI Bus to signal interrupts to the IMSIC
   ariane_axi_soc::req_slv_t    msi_req;
   ariane_axi_soc::resp_slv_t   msi_resp;
-  `AXI_ASSIGN_TO_REQ(msi_req, imsic)
-  `AXI_ASSIGN_FROM_RESP(imsic, msi_resp)
+  `AXI_ASSIGN_TO_REQ(msi_req, imsic_master)
+  `AXI_ASSIGN_FROM_RESP(imsic_master, msi_resp)
 
   localparam imsic_protocol_pkg::protocol_cfg_t ImsicProtocolCfg = '{
     AXI_ADDR_WIDTH: AxiAddrWidth,
@@ -646,122 +847,13 @@ module riscv_peripherals #(
     AXI_ID_WIDTH:   AxiIdWidth
   };
 
-  enum logic [2:0] {Idle, WriteSecond, ReadSecond, WriteResp, ReadResp} state_d, state_q;
-  logic [31:0] rword_d, rword_q;
-
-  // register read data
-  assign rword_d = (aplic_req.valid && !aplic_req.write) ? aplic_resp.rdata : rword_q;
-  assign aplic_master.r_data = {aplic_resp.rdata, rword_q};
-
-  always_ff @(posedge clk_i or negedge rst_ni) begin : p_aplic_regs
-    if (!rst_ni) begin
-      state_q <= Idle;
-      rword_q <= '0;
-    end else begin
-      state_q <= state_d;
-      rword_q <= rword_d;
+  genvar i;
+  generate
+    for (i = 0; i < NumHarts; i++) begin
+      assign irq_o[(i+1)*ariane_pkg::NrIntpFiles-1 : i*ariane_pkg::NrIntpFiles] =
+        aia_csr_imsic2hart[i].Xeip_targets;
     end
-  end
-
-  // this is a simplified AXI statemachine, since the
-  // W and AW requests always arrive at the same time here
-  always_comb begin : p_aplic_if
-    automatic logic [31:0] waddr, raddr;
-    // subtract the base offset (truncated to 32 bits)
-    waddr = aplic_master.aw_addr[31:0] - 32'(AplicBase) + 32'hc000000;
-    raddr = aplic_master.ar_addr[31:0] - 32'(AplicBase) + 32'hc000000;
-
-    // AXI-lite
-    aplic_master.aw_ready = aplic_resp.ready;
-    aplic_master.w_ready  = aplic_resp.ready;
-    aplic_master.ar_ready = aplic_resp.ready;
-
-    aplic_master.r_valid  = 1'b0;
-    aplic_master.r_resp   = '0;
-    aplic_master.b_valid  = 1'b0;
-    aplic_master.b_resp   = '0;
-
-    // APLIC
-    aplic_req.valid       = 1'b0;
-    aplic_req.wstrb       = '0;
-    aplic_req.write       = 1'b0;
-    aplic_req.wdata       = aplic_master.w_data[31:0];
-    aplic_req.addr        = waddr;
-
-    // default
-    state_d              = state_q;
-
-    unique case (state_q)
-      Idle: begin
-        if (aplic_master.w_valid && aplic_master.aw_valid && aplic_resp.ready) begin
-          aplic_req.valid = 1'b1;
-          aplic_req.write = plic_master.w_strb[3:0];
-          aplic_req.wstrb = '1;
-          // this is a 64bit write, need to write second 32bit chunk in second cycle
-          if (aplic_master.aw_size == 3'b11) begin
-            state_d = WriteSecond;
-          end else begin
-            state_d = WriteResp;
-          end
-        end else if (aplic_master.ar_valid && aplic_resp.ready) begin
-          aplic_req.valid = 1'b1;
-          aplic_req.addr  = raddr;
-          // this is a 64bit read, need to read second 32bit chunk in second cycle
-          if (aplic_master.ar_size == 3'b11) begin
-            state_d = ReadSecond;
-          end else begin
-            state_d = ReadResp;
-          end
-        end
-      end
-      // write high word
-      WriteSecond: begin
-        aplic_master.aw_ready = 1'b0;
-        aplic_master.w_ready  = 1'b0;
-        aplic_master.ar_ready = 1'b0;
-        aplic_req.addr        = waddr + 32'h4;
-        aplic_req.wdata       = aplic_master.w_data[63:32];
-        if (aplic_resp.ready && aplic_master.b_ready) begin
-          aplic_req.valid       = 1'b1;
-          aplic_req.write       = 1'b1;
-          aplic_req.wstrb       = '1;
-          aplic_master.b_valid  = 1'b1;
-          state_d              = Idle;
-        end
-      end
-      // read high word
-      ReadSecond: begin
-        aplic_master.aw_ready = 1'b0;
-        aplic_master.w_ready  = 1'b0;
-        aplic_master.ar_ready = 1'b0;
-        aplic_req.addr        = raddr + 32'h4;
-        if (aplic_resp.ready && aplic_master.r_ready) begin
-          aplic_req.valid      = 1'b1;
-          aplic_master.r_valid = 1'b1;
-          state_d             = Idle;
-        end
-      end
-      WriteResp: begin
-        aplic_master.aw_ready = 1'b0;
-        aplic_master.w_ready  = 1'b0;
-        aplic_master.ar_ready = 1'b0;
-        if (aplic_master.b_ready) begin
-          aplic_master.b_valid  = 1'b1;
-          state_d              = Idle;
-        end
-      end
-      ReadResp: begin
-        aplic_master.aw_ready = 1'b0;
-        aplic_master.w_ready  = 1'b0;
-        aplic_master.ar_ready = 1'b0;
-        if (aplic_master.r_ready) begin
-          aplic_master.r_valid = 1'b1;
-          state_d             = Idle;
-        end
-      end
-      default: state_d = Idle;
-    endcase
-  end
+  endgenerate
 
   aplic_top #(
     .AplicCfg       ( aplic_pkg::DefaultAplicCfg        ),
@@ -772,11 +864,11 @@ module riscv_peripherals #(
     .axi_req_t      ( ariane_axi_soc::req_slv_t         ),
     .axi_resp_t     ( ariane_axi_soc::resp_slv_t        )
   ) aplic_top_embedded_i (
-    .i_clk,
-    .ni_rst,
+    .i_clk          (clk_i                              ),
+    .ni_rst         ( rst_ni                            ),
     .i_irq_sources  ( {irq_sources[ariane_soc::NumSources-2:0], 1'b0}    ),
-    .i_req_cfg      ( aplic_req                         ),
-    .o_resp_cfg     ( aplic_resp                        ),
+    .i_req_cfg      ( aplic_regmap_req                  ),
+    .o_resp_cfg     ( aplic_regmap_resp                 ),
     .i_imsic_csr    ( aia_csr_hart2imsic                ),
     .o_imsic_csr    ( aia_csr_imsic2hart                ),         
     .i_imsic_req    ( msi_req                           ),

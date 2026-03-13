@@ -33,7 +33,7 @@ module fpnew_classifier #(
   } fp_t;
 
   // Iterate through all operands
-  for (genvar op = 0; op < int'(NumOperands); op++) begin : gen_num_values
+  for (genvar op = 0; op < NumOperands; op++) begin : gen_num_values
 
     fp_t value;
     logic is_boxed;

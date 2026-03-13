@@ -77,7 +77,7 @@ module fpnew_opgroup_block #(
   // -------------------------
   // Generate Parallel Slices
   // -------------------------
-  for (genvar fmt = 0; fmt < int'(NUM_FORMATS); fmt++) begin : gen_parallel_slices
+  for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : gen_parallel_slices
     // Some constants for this format
     localparam logic ANY_MERGED = fpnew_pkg::any_enabled_multi(FmtUnitTypes, FpFmtMask);
     localparam logic IS_FIRST_MERGED =

@@ -49,7 +49,7 @@ module ariane_verilog_wrap
   input   imsic_pkg::csr_channel_from_imsic_t     aia_csr_imsic2hart,
   output  imsic_pkg::csr_channel_to_imsic_t       aia_csr_hart2imsic,
   // Interrupt inputs
-  input  [1:0]                irq_i,        // level sensitive IR lines, mip & sip (async)
+  input  [ariane_pkg::NrIntpFiles-1:0] irq_i, // level sensitive IR lines, mip/sip/vsip (async)
   input                       ipi_i,        // inter-processor interrupts (async)
   // Timer facilities
   input                       time_irq_i,   // timer interrupt in (async)
@@ -132,7 +132,7 @@ module ariane_verilog_wrap
   // synchronizers
   /////////////////////////////
 
-  logic [1:0] irq;
+  logic [ariane_pkg::NrIntpFiles-1:0] irq;
   logic ipi, time_irq, debug_req;
 
   // reset synchronization

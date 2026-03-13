@@ -76,7 +76,7 @@ module fpnew_opgroup_fmt_slice #(
   // ---------------
   // Generate Lanes
   // ---------------
-  for (genvar lane = 0; lane < int'(NUM_LANES); lane++) begin : gen_num_lanes
+  for (genvar lane = 0; lane < NUM_LANES; lane++) begin : gen_num_lanes
     logic [FP_WIDTH-1:0] local_result; // lane-local results
     logic                local_sign;
 
