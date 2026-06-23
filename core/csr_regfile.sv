@@ -1444,7 +1444,7 @@ module csr_regfile import ariane_pkg::*; #(
         // Machine Mode External Interrupt Pending
         mip_d[riscv::IRQ_M_EXT] = irq_i[0];
         // Machine software interrupt
-        mip_d[riscv::IRQ_M_SOFT] = '0;
+        mip_d[riscv::IRQ_M_SOFT] = ipi_i;
         // Timer interrupt pending, coming from platform timer
         mip_d[riscv::IRQ_M_TIMER] = time_irq_i;
         
