@@ -401,5 +401,57 @@ module ptw import ariane_pkg::*; #(
         end
     end
 
+`ifdef PITON_ILA_L15
+//==========================================================================
+// Page-table walker observer (debug only, PITON_ILA_L15).
+//
+// Deepest probe in the chain. If the MMU probe shows ptw_active=1 with
+// walking_instr=1 and no error, the walk started and never finished --
+// this says where it is parked:
+//
+//   state_q  0 IDLE  1 WAIT_GRANT  2 PTE_LOOKUP  3 WAIT_RVALID
+//            4 PROPAGATE_ERROR     5 PROPAGATE_ACCESS_ERROR
+//
+//   WAIT_GRANT  + data_req=1, data_gnt=0  -> D-cache never granted the walk
+//   WAIT_RVALID + data_rvalid=0           -> granted, but the PTE never came
+//                                            back from the D-cache
+//   IDLE while the MMU still waits        -> nobody is servicing the miss
+//
+// dbgp_pptr is the physical address of the PTE being fetched: the exact
+// transaction to chase in the L2 if the walk is hung on memory.
+//==========================================================================
+(* mark_debug = "true" *) logic [2:0]  dbgp_state;
+(* mark_debug = "true" *) logic [1:0]  dbgp_lvl;
+(* mark_debug = "true" *) logic [31:0] dbgp_busy_cnt;
+(* mark_debug = "true" *) logic        dbgp_is_instr;
+(* mark_debug = "true" *) logic        dbgp_data_req;
+(* mark_debug = "true" *) logic        dbgp_data_gnt;
+(* mark_debug = "true" *) logic        dbgp_data_rvalid;
+(* mark_debug = "true" *) logic        dbgp_rvalid_q;
+(* mark_debug = "true" *) logic        dbgp_tag_valid;
+(* mark_debug = "true" *) logic [riscv::PLEN-1:0] dbgp_pptr;
+
+assign dbgp_state       = state_q;
+assign dbgp_lvl         = ptw_lvl_q;
+assign dbgp_is_instr    = is_instr_ptw_q;
+assign dbgp_data_req    = req_port_o.data_req;
+assign dbgp_data_gnt    = req_port_i.data_gnt;
+assign dbgp_data_rvalid = req_port_i.data_rvalid;
+assign dbgp_rvalid_q    = data_rvalid_q;
+assign dbgp_tag_valid   = tag_valid_q;
+assign dbgp_pptr        = ptw_pptr_q;
+
+// Cycles the walker has been out of IDLE. Saturates, so a hung walk reads
+// 0xFFFFFFFF while a healthy one never gets far from zero.
+always_ff @(posedge clk_i or negedge rst_ni) begin : p_dbgp_busy
+  if (!rst_ni)
+    dbgp_busy_cnt <= '0;
+  else if (state_q == IDLE)
+    dbgp_busy_cnt <= '0;
+  else if (dbgp_busy_cnt != 32'hFFFF_FFFF)
+    dbgp_busy_cnt <= dbgp_busy_cnt + 32'd1;
+end
+`endif // PITON_ILA_L15
+
 endmodule
 /* verilator lint_on WIDTH */

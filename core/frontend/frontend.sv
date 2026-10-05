@@ -502,4 +502,42 @@ module frontend import ariane_pkg::*; #(
       end
     `endif
     // pragma translate_on
+
+`ifdef PITON_ILA_L15
+//==========================================================================
+// Frontend fetch observer (debug only, PITON_ILA_L15).
+//
+// The commit-stage observer showed the dead core has an EMPTY commit stage
+// (commit_valid = 0) with nothing outstanding at the L1.5, i.e. the pipeline
+// is starved rather than blocked on a memory reply. These probes show the
+// other end of that: the address the frontend wants next and whether the
+// I-cache handshake is still moving.
+//
+// dbgf_nofetch_cnt = cycles since the last valid instruction return.
+//==========================================================================
+(* mark_debug = "true" *) logic [riscv::VLEN-1:0] dbgf_npc;
+(* mark_debug = "true" *) logic [riscv::VLEN-1:0] dbgf_fetch_vaddr;
+(* mark_debug = "true" *) logic        dbgf_req;
+(* mark_debug = "true" *) logic        dbgf_ready;
+(* mark_debug = "true" *) logic        dbgf_valid;
+(* mark_debug = "true" *) logic        dbgf_ex_valid;
+(* mark_debug = "true" *) logic [31:0] dbgf_nofetch_cnt;
+
+assign dbgf_npc         = npc_q;
+assign dbgf_fetch_vaddr = icache_dreq_o.vaddr;
+assign dbgf_req         = icache_dreq_o.req;    // frontend asking for a fetch
+assign dbgf_ready       = icache_dreq_i.ready;  // I$ able to accept
+assign dbgf_valid       = icache_dreq_i.valid;  // I$ returning instructions
+assign dbgf_ex_valid    = icache_dreq_i.ex.valid;
+
+always_ff @(posedge clk_i or negedge rst_ni) begin : p_dbgf_fetch
+  if (!rst_ni)
+    dbgf_nofetch_cnt <= '0;
+  else if (icache_dreq_i.valid)
+    dbgf_nofetch_cnt <= '0;
+  else if (dbgf_nofetch_cnt != 32'hFFFF_FFFF)
+    dbgf_nofetch_cnt <= dbgf_nofetch_cnt + 32'd1;   // saturate
+end
+`endif // PITON_ILA_L15
+
 endmodule

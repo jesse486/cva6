@@ -1106,4 +1106,64 @@ module cva6 import ariane_pkg::*; #(
   end
 `endif
 
+`ifdef PITON_ILA_L15
+//==========================================================================
+// Commit-stage freeze observer (debug only, PITON_ILA_L15).
+//
+// The L1.5 observer in ariane_verilog_wrap already proved the dead core has
+// nothing outstanding at its memory port (dbg_outstanding = 0, interface
+// fully idle), so the stall is inside the core, not in the coherence
+// fabric. These probes name the instruction that cannot retire.
+//
+// dbgc_noretire_cnt is the core-level twin of dbg_quiet_cnt: cycles since
+// the last instruction committed. A live core resets it constantly; a
+// frozen one lets it run to saturation.
+//==========================================================================
+(* mark_debug = "true" *) logic [riscv::VLEN-1:0] dbgc_commit_pc;
+(* mark_debug = "true" *) logic [3:0]  dbgc_commit_fu;
+(* mark_debug = "true" *) logic        dbgc_commit_valid;
+(* mark_debug = "true" *) logic        dbgc_commit_ack;
+(* mark_debug = "true" *) logic        dbgc_commit_ex;
+(* mark_debug = "true" *) logic        dbgc_halt;
+(* mark_debug = "true" *) logic        dbgc_flush;
+(* mark_debug = "true" *) logic [31:0] dbgc_retire_cnt;
+(* mark_debug = "true" *) logic [31:0] dbgc_noretire_cnt;
+
+// THE key probe: latched on every successful commit, so after a freeze it
+// holds the last instruction that actually completed. The faulting
+// instruction is the next one. dbgc_commit_pc (the commit HEAD) is useless
+// on a starved core because commit_valid reads 0 and the field is stale.
+(* mark_debug = "true" *) logic [riscv::VLEN-1:0] dbgc_last_retired_pc;
+(* mark_debug = "true" *) logic [3:0]             dbgc_last_retired_fu;
+
+// fu encoding (ariane_pkg fu_t): 0 NONE, 1 LOAD, 2 STORE, 3 ALU,
+//                                4 CTRL_FLOW, 5 MULT, 6 CSR, 7 FPU,
+//                                8 FPU_VEC, 9 CVXIF
+assign dbgc_commit_pc    = commit_instr_id_commit[0].pc;
+assign dbgc_commit_fu    = commit_instr_id_commit[0].fu;
+assign dbgc_commit_valid = commit_instr_id_commit[0].valid;
+assign dbgc_commit_ack   = commit_ack[0];
+assign dbgc_commit_ex    = commit_instr_id_commit[0].ex.valid;
+assign dbgc_halt         = halt_ctrl;
+assign dbgc_flush        = flush_ctrl_if;
+
+always_ff @(posedge clk_i or negedge rst_ni) begin : p_dbgc_commit
+  if (!rst_ni) begin
+    dbgc_retire_cnt      <= '0;
+    dbgc_noretire_cnt    <= '0;
+    dbgc_last_retired_pc <= '0;
+    dbgc_last_retired_fu <= '0;
+  end else begin
+    if (commit_ack[0]) begin
+      dbgc_retire_cnt      <= dbgc_retire_cnt + 32'd1;
+      dbgc_noretire_cnt    <= '0;
+      dbgc_last_retired_pc <= commit_instr_id_commit[0].pc;
+      dbgc_last_retired_fu <= commit_instr_id_commit[0].fu;
+    end else if (dbgc_noretire_cnt != 32'hFFFF_FFFF) begin
+      dbgc_noretire_cnt <= dbgc_noretire_cnt + 32'd1;   // saturate
+    end
+  end
+end
+`endif // PITON_ILA_L15
+
 endmodule // ariane

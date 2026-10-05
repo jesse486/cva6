@@ -568,4 +568,65 @@ module mmu import ariane_pkg::*; #(
             dtlb_is_1G_q     <=  dtlb_is_1G_n;
         end
     end
+
+`ifdef PITON_ILA_L15
+//==========================================================================
+// MMU instruction-translation observer (debug only, PITON_ILA_L15).
+//
+// The I-cache probe showed the dead core parked in the READ state with
+// ready=0 for 85+ s. Every exit path in that state is behind
+//
+//     if (areq_i.fetch_valid && ...)
+//
+// so the I-cache is waiting on THIS module. And fetch_valid is asserted in
+// only two places when translation is on (see instr_interface above):
+//
+//     line 231:  icache_areq_o.fetch_valid = 1'b0;              (default)
+//     line 249:  if (itlb_lu_hit)  fetch_valid = fetch_req;     (ITLB hit)
+//     line 277:  if (ptw_active && walking_instr)
+//                    fetch_valid = ptw_error | ptw_access_exception;
+//
+// So a permanently low fetch_valid means: ITLB miss, and either the PTW is
+// walking and never finishes, or it is not walking at all (nobody is
+// servicing the miss). dbgm_ptw_active + dbgm_walking_instr separate those.
+//==========================================================================
+(* mark_debug = "true" *) logic [31:0] dbgm_novalid_cnt;
+(* mark_debug = "true" *) logic        dbgm_fetch_req;
+(* mark_debug = "true" *) logic        dbgm_fetch_valid;
+(* mark_debug = "true" *) logic [riscv::VLEN-1:0] dbgm_fetch_vaddr;
+(* mark_debug = "true" *) logic        dbgm_itlb_access;
+(* mark_debug = "true" *) logic        dbgm_itlb_hit;
+(* mark_debug = "true" *) logic        dbgm_ptw_active;
+(* mark_debug = "true" *) logic        dbgm_walking_instr;
+(* mark_debug = "true" *) logic        dbgm_ptw_error;
+(* mark_debug = "true" *) logic        dbgm_ptw_acc_exc;
+(* mark_debug = "true" *) logic        dbgm_iaccess_err;
+(* mark_debug = "true" *) logic        dbgm_en_translation;
+(* mark_debug = "true" *) logic        dbgm_itlb_update_vld;
+
+assign dbgm_fetch_req       = icache_areq_i.fetch_req;
+assign dbgm_fetch_valid     = icache_areq_o.fetch_valid;
+assign dbgm_fetch_vaddr     = icache_areq_i.fetch_vaddr;
+assign dbgm_itlb_access     = itlb_lu_access;
+assign dbgm_itlb_hit        = itlb_lu_hit;
+assign dbgm_ptw_active      = ptw_active;
+assign dbgm_walking_instr   = walking_instr;
+assign dbgm_ptw_error       = ptw_error;
+assign dbgm_ptw_acc_exc     = ptw_access_exception;
+assign dbgm_iaccess_err     = iaccess_err;
+assign dbgm_en_translation  = enable_translation_i;
+assign dbgm_itlb_update_vld = update_ptw_itlb.valid;
+
+// Cycles the frontend has been asking for a translation without getting
+// one. Saturates, so a wedged MMU reads 0xFFFFFFFF.
+always_ff @(posedge clk_i or negedge rst_ni) begin : p_dbgm_novalid
+  if (!rst_ni)
+    dbgm_novalid_cnt <= '0;
+  else if (icache_areq_o.fetch_valid || !icache_areq_i.fetch_req)
+    dbgm_novalid_cnt <= '0;
+  else if (dbgm_novalid_cnt != 32'hFFFF_FFFF)
+    dbgm_novalid_cnt <= dbgm_novalid_cnt + 32'd1;
+end
+`endif // PITON_ILA_L15
+
 endmodule

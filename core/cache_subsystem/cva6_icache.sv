@@ -549,4 +549,86 @@ end else begin : gen_piton_offset
 `endif
 //pragma translate_on
 
+`ifdef PITON_ILA_L15
+//==========================================================================
+// I-cache lock-up observer (debug only, PITON_ILA_L15).
+//
+// The frontend probe showed the dead core stuck with req=1 / ready=0 for
+// 85+ s, fetching ld-2.33.so+0x8764, with NOTHING outstanding at the L1.5.
+// So the I-cache is refusing requests while not waiting for a fill.
+//
+// dreq_o.ready is asserted in exactly ONE place (the IDLE arm of the FSM):
+//
+//     IDLE: if (flush_d || (en_i && !cache_en_q))  state_d = FLUSH;
+//           else if (!mem_rtrn_vld_i)              dreq_o.ready = 1'b1;
+//
+// so ready stuck low means one of:
+//   (a) state_q is NOT IDLE  -> parked in FLUSH / READ / MISS / KILL_*
+//   (b) state_q IS IDLE but mem_rtrn_vld_i is stuck high (a return that
+//       is never consumed -- note invalidations arrive this way)
+//   (c) state_q IS IDLE but flush_d is stuck set, so it keeps bouncing to
+//       FLUSH, and flush_done never completes
+//
+// dbgi_state discriminates all three. Encoding of state_e (line 94):
+//   0 FLUSH  1 IDLE  2 READ  3 MISS  4 KILL_ATRANS  5 KILL_MISS
+//==========================================================================
+(* mark_debug = "true" *) logic [2:0]  dbgi_state;
+(* mark_debug = "true" *) logic [31:0] dbgi_notready_cnt;
+(* mark_debug = "true" *) logic        dbgi_ready;
+(* mark_debug = "true" *) logic        dbgi_req;
+(* mark_debug = "true" *) logic        dbgi_mem_rtrn_vld;
+(* mark_debug = "true" *) logic        dbgi_mem_rtrn_type;
+(* mark_debug = "true" *) logic        dbgi_mem_data_req;
+(* mark_debug = "true" *) logic        dbgi_mem_data_ack;
+(* mark_debug = "true" *) logic        dbgi_flush_d;
+(* mark_debug = "true" *) logic        dbgi_flush_q;
+(* mark_debug = "true" *) logic        dbgi_flush_en;
+(* mark_debug = "true" *) logic        dbgi_flush_done;
+(* mark_debug = "true" *) logic        dbgi_inv_en;
+(* mark_debug = "true" *) logic        dbgi_inv_q;
+(* mark_debug = "true" *) logic        dbgi_cache_en;
+(* mark_debug = "true" *) logic [ICACHE_CL_IDX_WIDTH-1:0] dbgi_flush_cnt;
+
+// The other half of the READ gate. The MMU probe showed fetch_valid = 1
+// with the FSM still parked, so the block must be the second term:
+//     if (areq_i.fetch_valid && (!dreq_i.spec || !addr_ni))
+// i.e. a SPECULATIVE fetch to an address the PMA config calls
+// non-idempotent. These three make that visible instead of inferred.
+(* mark_debug = "true" *) logic        dbgi_spec;
+(* mark_debug = "true" *) logic        dbgi_addr_ni;
+(* mark_debug = "true" *) logic        dbgi_areq_valid;
+(* mark_debug = "true" *) logic [riscv::PLEN-1:0] dbgi_fetch_paddr;
+
+assign dbgi_state         = state_q;
+assign dbgi_ready         = dreq_o.ready;
+assign dbgi_req           = dreq_i.req;
+assign dbgi_mem_rtrn_vld  = mem_rtrn_vld_i;
+assign dbgi_mem_rtrn_type = mem_rtrn_i.rtype;   // 0 = INV_REQ, 1 = IFILL_ACK
+assign dbgi_mem_data_req  = mem_data_req_o;
+assign dbgi_mem_data_ack  = mem_data_ack_i;
+assign dbgi_flush_d       = flush_d;
+assign dbgi_flush_q       = flush_q;
+assign dbgi_flush_en      = flush_en;
+assign dbgi_flush_done    = flush_done;
+assign dbgi_inv_en        = inv_en;
+assign dbgi_inv_q         = inv_q;
+assign dbgi_cache_en      = cache_en_q;
+assign dbgi_flush_cnt     = flush_cnt_q;
+assign dbgi_spec          = dreq_i.spec;
+assign dbgi_addr_ni       = addr_ni;
+assign dbgi_areq_valid    = areq_i.fetch_valid;
+assign dbgi_fetch_paddr   = areq_i.fetch_paddr;
+
+// Cycles since the I-cache last accepted a request. Saturates, so a
+// locked-up cache reads 0xFFFFFFFF while a healthy one stays near zero.
+always_ff @(posedge clk_i or negedge rst_ni) begin : p_dbgi_notready
+  if (!rst_ni)
+    dbgi_notready_cnt <= '0;
+  else if (dreq_o.ready)
+    dbgi_notready_cnt <= '0;
+  else if (dbgi_notready_cnt != 32'hFFFF_FFFF)
+    dbgi_notready_cnt <= dbgi_notready_cnt + 32'd1;
+end
+`endif // PITON_ILA_L15
+
 endmodule // cva6_icache
